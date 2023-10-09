@@ -13,7 +13,8 @@
 
 using namespace std;
 
-BPE learn(std::string filename, int max_read_bytes, int num_tokens);
+//just limiting the minimum frequency should also work well.
+BPE learn(std::string filename, int max_read_bytes, int num_tokens, int min_frequency);
 
 pair<int, int> get_max_pair(std::vector<std::vector<int>> token_pair_counts);
 
