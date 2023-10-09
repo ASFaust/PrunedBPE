@@ -29,15 +29,15 @@ BPE learn(string filename, int max_read_bytes, int num_tokens) {
     int debug_counter = 0; //temporary. only do n iterations of the algorithm.
     while(token_counter < num_tokens){
 
-        //TODO: create estimates for the length of the encoding after the replacement
-        //according to my understanding of the formula
-        bool create_new_token = get_min_token(token_pair_counts, token_counts, production_rules);
+        auto [min_token,replacing_with,predicted_encoding_length] = try_replacing(token_pair_counts, token_counts, production_rules);
 
-        replace_pair(encoded, max_pair, token_counter);
-
-        if(create_new_token){
+        if(min_token == -1){
             cout << "->creating new token " << token_counter << endl;
-            production_rules[token_counter] = {max_pair.first, max_pair.second};
+            pair<int, int> most_common_pair = get_max_pair(token_pair_counts);
+            cout << " most common pair is " << most_common_pair.first << " , " << most_common_pair.second << endl;
+            replace_pair(encoded, most_common_pair, token_counter);
+
+            production_rules[token_counter] = {most_common_pair.first, most_common_pair.second};
             token_counter += 1;
         }
         else{
@@ -47,17 +47,30 @@ BPE learn(string filename, int max_read_bytes, int num_tokens) {
                 cout << i << " ";
             }
             cout << endl;
-            //cout << " new token rule is " << max_pair.first << " " << max_pair.second << endl;
 
-            vector<int> production_rule = production_rules[min_token];
+            vector<int> old_production_rule = production_rules[min_token];
+            reencode(encoded, min_token, replacing_with, production_rules[min_token]);
 
-            inflate(encoded, min_token, production_rules[min_token]); //replace min_token with production_rules[min_token]
+            alter_production_rules(production_rules, min_token, replacing_with);
 
-            replace_token(encoded, token_counter, min_token); //token_counter was just a temporary token, now we replace it with the new token
+            cout << " new token rule is ";
+            for(auto i : production_rules[min_token]){
+                cout << i << " ";
+            }
+            cout << endl;
 
-            //now we need to alter the production rules[min_token] to reflect the new rule
-            //we need to insert elements into the production rule if the new production rule would be self-referential
-            alter_production_rules(production_rules, max_pair, min_token);
+            //has signature void(vector<int>&, int, pair<int,int>, map<int, vector<int> >&)
+
+            cout << " new encoding length is " << encoded.size() << endl;
+
+            if(encoded.size() != predicted_encoding_length){
+                cout << "encoding length mismatch! you little fool, adjust your algorithm ;) " << endl;
+                cout << "encoded size is " << encoded.size() << endl;
+                cout << "predicted encoding length is " << predicted_encoding_length << endl;
+                cout << "difference is " << encoded.size() - predicted_encoding_length << endl;
+                //throw a runtime error
+                throw std::runtime_error("encoding length mismatch");
+            }
         }
 
         cout << "at the end of the iteration, the new encoding length is " << encoded.size() << endl;
@@ -72,7 +85,7 @@ BPE learn(string filename, int max_read_bytes, int num_tokens) {
         */
         update_algorithm_info(encoded, token_pair_counts, token_counts, token_counter);
         debug_counter++;
-        if(debug_counter >= 100){
+        if(debug_counter >= 1000){
             break;
         }
     }
@@ -83,34 +96,53 @@ BPE learn(string filename, int max_read_bytes, int num_tokens) {
 }
 
 void alter_production_rules(
-    map<int, vector<int> >& production_rules,
-    pair<int, int> max_pair,
-    int min_token
+    map<int, vector<int>>& production_rules,
+    int min_token,
+    pair<int, int> replacing_with
 ){
-    vector<int> production_rule = production_rules[min_token];
-    vector<int> left_production;
-    vector<int> right_production;
-    if(max_pair.first == min_token){
-        left_production = production_rule;
-    }else{
-        left_production = {max_pair.first};
-    }
-    if(max_pair.second == min_token){
-        right_production = production_rule;
-    }else{
-        right_production = {max_pair.second};
-    }
-    left_production.insert(left_production.end(), right_production.begin(), right_production.end());
-    production_rules[min_token] = left_production;
-    cout << " new token rule is ";
-    for(auto i : production_rules[min_token]){
+    // Step 1: Direct replacement of `min_token` production rule
+    vector<int> old_production_rule = production_rules[min_token];
+    cout << "replacing " << min_token << " with " << replacing_with.first << " , " << replacing_with.second << endl;
+    cout << "old rule was ";
+    for(auto i : old_production_rule){
         cout << i << " ";
     }
     cout << endl;
+    vector<int> new_production_rule;
+    if(replacing_with.first == min_token){
+        cout << "first token is min token: " << replacing_with.first << endl;
+        new_production_rule.insert(new_production_rule.end(), old_production_rule.begin(), old_production_rule.end());
+    }else{
+        new_production_rule.push_back(replacing_with.first);
+    }
+
+    if(replacing_with.second == min_token){
+        cout << "second token is min token: " << replacing_with.second << endl;
+        new_production_rule.insert(new_production_rule.end(), old_production_rule.begin(), old_production_rule.end());
+    }else{
+        new_production_rule.push_back(replacing_with.second);
+    }
+
+    production_rules[min_token] = new_production_rule;
+
+    // Step 2: Update all existing production rules
+    for(auto& rule : production_rules){
+        // Check and update only if `min_token` is not the key being iterated (already updated in Step 1)
+        if(rule.first != min_token){
+            vector<int> updated_rule;
+            for(int token : rule.second){
+                if(token == min_token){
+                    updated_rule.insert(updated_rule.end(), old_production_rule.begin(), old_production_rule.end());
+                }else{
+                    updated_rule.push_back(token);
+                }
+            }
+            rule.second = updated_rule;
+        }
+    }
 }
 
-
-pair<pair<int, int>,int> get_max_pair(vector<vector<int> > token_pair_counts){
+pair<int, int> get_max_pair(vector<vector<int> > token_pair_counts){
     int max_count = 0;
     pair<int, int> max_pair;
     for(int i = 0; i < token_pair_counts.size(); i++){
@@ -121,7 +153,7 @@ pair<pair<int, int>,int> get_max_pair(vector<vector<int> > token_pair_counts){
             }
         }
     }
-    return make_pair(max_pair, max_count);
+    return max_pair;
 }
 
 void read_file(string fname, int max_read_bytes, vector<unsigned char> &buffer){
@@ -175,36 +207,41 @@ void init_algorithm(
     token_counts[last_byte]++;
 }
 
-int get_min_token(
+tuple<int,pair<int,int>,int>  try_replacing(
     vector<vector<int>>& token_pair_counts,
     vector<int>& token_counts,
     map<int, vector<int>> &production_rules
 ){
-    int encoding_length = accumulate(token_counts.begin(), token_counts.end(), 0);
-    cout << "Initial encoding length is " << encoding_length << endl;
-
+    //formula for encoding length change:
+    // -1 for each pair replaced -> we can use token_pair_counts[replacing_with.first][replacing_with.second]
+    // + (production_rule.size() - 1) for each min_token replaced
+    //we cant use token_count[min_token] if min_token == replacing_with.first or replacing_with.second
+    //we need to subtract token_pair_counts[min_token] if min_token == replacing_with.first or replacing_with.second
+    //we need to subtract it twice if min_token == replacing_with.first and replacing_with.second, i just realized
+    int encoding_length = 0;
+    for(int i = 0; i < token_counts.size(); i++){
+        encoding_length += token_counts[i];
+    }
+    cout << "encoding length: " << encoding_length << endl;
     int min_token = -1;
     int min_encoding_length = encoding_length;
-
-    for(int i = 0; i < token_pair_counts.size(); i++){
-        for(int j = 0; j < token_pair_counts[i].size(); j++){
-            for(int k = 256; k < token_counts.size(); k++){
+    int ri = 0;
+    int rj = 0;
+    int min_adjusted_token_counts = 0;
+    for(int k = 256; k < token_counts.size(); k++){
+        for(int i = 0; i < token_pair_counts.size(); i++){
+            for(int j = 0; j < token_pair_counts[i].size(); j++){
+                int adjusted_token_counts = token_counts[k];
                 int new_encoding_length = encoding_length;
 
-                int adjusted_token_counts = token_counts[k];
-                if((k != i) && (k != j)){
-                    //nothing happens. all k are unraveled.
-                }else{
-                    if((k==i) && (k != j)){
-                        //we dont unravel the ks that are followed by j,
-                        //which are exactly token_pair_counts many
-                        adjusted_token_counts -= token_pair_counts[k][j];
-                    }
-                    if((k!=i) && (k == j)){
-                        adjusted_token_counts -= token_pair_counts[i][k];
-                    }
+                if(k == i){
+                    adjusted_token_counts -= token_pair_counts[k][j];
                 }
-                // we do not unravel k if
+                if(k == j){
+                    adjusted_token_counts -= token_pair_counts[i][k];
+                }
+                //adjusted_token_counts -= token_pair_counts[i][j];
+                //used to be production_rules[k].size() - 1!!
                 new_encoding_length += (production_rules[k].size() - 1) * adjusted_token_counts;
 
                 // Decrease encoding length for each [i, j] replaced by k.
@@ -214,16 +251,24 @@ int get_min_token(
                 if(new_encoding_length < min_encoding_length){
                     min_encoding_length = new_encoding_length;
                     min_token = k;
+                    ri = i;
+                    rj = j;
+                    min_adjusted_token_counts = adjusted_token_counts;
                 }
             }
         }
     }
-
-    // Return min_token to indicate which token (if any) should be replaced.
-    // Return -1 to indicate a new token should be created.
-    return min_token;
+    if(min_token != -1){
+        cout << "min token: " << min_token << endl;
+        cout << "min encoding length: " << min_encoding_length << endl;
+        cout << "new token pair: " << ri << " " << rj << endl;
+        cout << "tokens that will be expanded: " << min_adjusted_token_counts << endl;
+        cout << "length of the production that is going to be unrolled: " << production_rules[min_token].size() << endl;
+        cout << "token pair counts of the new token pair: " << token_pair_counts[ri][rj] << endl;
+    }
+    //auto [min_token,replacing_with,predicted_encoding_length] = try_replacin
+    return make_tuple(min_token, make_pair(ri, rj), min_encoding_length);
 }
-
 
 void replace_pair(list<int> &encoded, pair<int, int> max_pair, int c_token){
     //we now need to replace the most common pair with a new token.
@@ -239,33 +284,35 @@ void replace_pair(list<int> &encoded, pair<int, int> max_pair, int c_token){
     }
 }
 
-void inflate(list<int> &encoded, int min_token, vector<int> production_rule){
+void reencode(
+    list<int>& encoded,
+    int min_token,
+    pair<int,int> replacing_with,
+    vector<int>& old_production_rule
+    ){
     //we now need to replace the most common pair with a new token.
     auto it = encoded.begin();
-    while(it != std::prev(encoded.end())) { // stop loop one before the last element
-        // Use std::next(it) to access the next element without incrementing it
-        if(*it == min_token) {
-            it = encoded.erase(it); // erase returns iterator to following element
-            for(auto i : production_rule){
-                it = encoded.insert(it, i);
-                it++;
+    while(next(it) != encoded.end()){
+        if(((*it) == replacing_with.first) && ((*next(it) == replacing_with.second))){
+            *it = min_token;
+            it = encoded.erase(next(it));
+        }else{
+            if((*it) == min_token){
+                it = encoded.erase(it);
+                //production rules needs to already be expanded, any self-references need already be expanded
+                it = encoded.insert(it, old_production_rule.begin(), old_production_rule.end());
+                advance(it, old_production_rule.size());
+            }else{
+                it++; //oops forgot this
             }
-        } else {
-            ++it; // increment iterator only if no erasure has been done because of erase return value
         }
     }
-}
-
-void replace_token(list<int> &encoded, int to_replace, int replacement){
-    //we now need to replace the most common pair with a new token.
-    auto it = encoded.begin();
-    while(it != std::prev(encoded.end())) { // stop loop one before the last element
-        // Use std::next(it) to access the next element without incrementing it
-        if(*it == to_replace) {
-            *it = replacement;
-        }
-        ++it;
-    }
+    //formula for encoding length change:
+    // -1 for each pair replaced -> we can use token_pair_counts[replacing_with.first][replacing_with.second]
+    // + (production_rule.size() - 1) for each min_token replaced
+    //we cant use token_count[min_token] if min_token == replacing_with.first or replacing_with.second
+    //we need to subtract token_pair_counts[min_token] if min_token == replacing_with.first or replacing_with.second
+    //we need to subtract it twice if min_token == replacing_with.first and replacing_with.second, i just realized
 }
 
 void update_algorithm_info(
