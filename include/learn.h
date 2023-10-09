@@ -46,7 +46,7 @@ vector<vector<unsigned char> > unwrap_production_rules(
 
 std::vector<unsigned char> recursive_production(
     int token,
-    const std::map<int, std::pair<int, int>>& production_rules
+    const std::map<int, std::vector<int>>& production_rules
 );
 
 void replace_pair(std::list<int>& encoded, std::pair<int, int> max_pair, int c_token);

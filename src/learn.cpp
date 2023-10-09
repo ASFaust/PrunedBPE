@@ -26,7 +26,6 @@ BPE learn(string filename, int max_read_bytes, int num_tokens) {
     init_algorithm(token_pair_counts, token_counts, encoded, buffer);
 
     int token_counter = 256;
-    int debug_counter = 0; //temporary. only do n iterations of the algorithm.
     while(token_counter < num_tokens){
 
         auto [min_token,replacing_with,predicted_encoding_length] = try_replacing(token_pair_counts, token_counts, production_rules);
@@ -84,14 +83,10 @@ BPE learn(string filename, int max_read_bytes, int num_tokens) {
         cout << endl;
         */
         update_algorithm_info(encoded, token_pair_counts, token_counts, token_counter);
-        debug_counter++;
-        if(debug_counter >= 1000){
-            break;
-        }
     }
 
     return BPE(
-        unwrap_production_rules(production_rules, num_tokens)
+        unwrap_production_rules(production_rules, num_tokens - 256)
     );
 }
 
@@ -212,12 +207,7 @@ tuple<int,pair<int,int>,int>  try_replacing(
     vector<int>& token_counts,
     map<int, vector<int>> &production_rules
 ){
-    //formula for encoding length change:
-    // -1 for each pair replaced -> we can use token_pair_counts[replacing_with.first][replacing_with.second]
-    // + (production_rule.size() - 1) for each min_token replaced
-    //we cant use token_count[min_token] if min_token == replacing_with.first or replacing_with.second
-    //we need to subtract token_pair_counts[min_token] if min_token == replacing_with.first or replacing_with.second
-    //we need to subtract it twice if min_token == replacing_with.first and replacing_with.second, i just realized
+
     int encoding_length = 0;
     for(int i = 0; i < token_counts.size(); i++){
         encoding_length += token_counts[i];
@@ -228,9 +218,12 @@ tuple<int,pair<int,int>,int>  try_replacing(
     int ri = 0;
     int rj = 0;
     int min_adjusted_token_counts = 0;
-    for(int k = 256; k < token_counts.size(); k++){
-        for(int i = 0; i < token_pair_counts.size(); i++){
-            for(int j = 0; j < token_pair_counts[i].size(); j++){
+    for(int it1 = 256; it1 < token_counts.size(); it1++){
+        for(int it2 = 0; it2 < token_counts.size(); it2++){
+            int k = it1;
+            int i = it2;
+            int j = it1;
+            for(int it3 = 0; it3 < 2; it3++){ //additionally, try i=j=it2!
                 int adjusted_token_counts = token_counts[k];
                 int new_encoding_length = encoding_length;
 
@@ -255,6 +248,7 @@ tuple<int,pair<int,int>,int>  try_replacing(
                     rj = j;
                     min_adjusted_token_counts = adjusted_token_counts;
                 }
+                swap(i, j);
             }
         }
     }
@@ -362,38 +356,37 @@ vector<vector<unsigned char> > unwrap_production_rules(
 ){
     vector<vector<unsigned char> > unwrapped_production_rules;
 
-    /*unwrapped_production_rules.resize(num_tokens);
-    for(int i = 0; i < num_tokens; i++){
-        unwrapped_production_rules[i] = recursive_production(i, production_rules);
-    }*/
+    for(int i = 256; i < num_tokens; i++){
+        unwrapped_production_rules.push_back(recursive_production(i, production_rules));
+    }
     return unwrapped_production_rules;
 }
 
 std::vector<unsigned char> recursive_production(
     int token,
-    const std::map<int, std::pair<int, int>>& production_rules
+    const std::map<int, std::vector<int>>& production_rules
 ){
-    // Retrieve left and right using the provided token.
-    auto [left, right] = production_rules.at(token);
+    // Retrieve the vector using the provided token.
+    auto tokens = production_rules.at(token);
 
-    // Define two vectors to hold the recursively obtained results.
-    std::vector<unsigned char> left_ret, right_ret;
-
-    // Get left results.
-    if(left < 256){
-        left_ret.push_back(static_cast<unsigned char>(left));
-    }else{
-        left_ret = recursive_production(left, production_rules);
+    if(tokens.size() == 0){
+        throw std::runtime_error("Token " + std::to_string(token) + " has no production rule.");
     }
 
-    // Get right results.
-    if(right < 256){
-        right_ret.push_back(static_cast<unsigned char>(right));
-    }else{
-        right_ret = recursive_production(right, production_rules);
+    // Define a vector to hold the recursively obtained results.
+    std::vector<unsigned char> result;
+
+    // Loop through each token in the retrieved vector.
+    for(auto t : tokens){
+        // Get results.
+        if(t < 256){
+            result.push_back(static_cast<unsigned char>(t));
+        }else{
+            auto rec_result = recursive_production(t, production_rules);
+            result.insert(result.end(), rec_result.begin(), rec_result.end());
+        }
     }
 
-    // Concatenate left and right results and return.
-    left_ret.insert(left_ret.end(), right_ret.begin(), right_ret.end());
-    return left_ret;
+    // Return the recursively produced results.
+    return result;
 }

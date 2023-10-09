@@ -4,7 +4,11 @@
 #include <iostream>
 
 BPE::BPE(vector<vector<unsigned char>> production_rules) : production_rules(std::move(production_rules)) {
-
+    for (const auto& rule : this->production_rules) {
+        string utf8_string(rule.begin(), rule.end());
+        cout << "rule length: " << rule.size() << endl;
+        cout << utf8_string << endl;
+    }
 }
 
 void BPE::save(string filename) const {
