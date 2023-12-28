@@ -1,10 +1,37 @@
-# Byte-level BPE with pruning
+# PrunedBPE: Byte-level BPE with Dynamic Pruning
 
-Byte pair encodings are suboptimal. Once a new token is created because of its frequency, it is not guaranteed to keep that frequency until finishing the BPE, because other pairs involving this token might arise, which will decrease the frequency of the token. A solution to this is dynamically pruning intermediate tokens whose frequency has dropped below a certain threshold during creating the BPE. Pruning creates a better encoding whose tokens all adhere to the frequency threshold, which frees up tokens
-Pruning frees up tokens to encode other pairs, which leads to a more efficient encoding. 
-It also guarantees that each token will be seen at least min_frequency times in the dataset, so that the model can better learn the different contexts in which the token is used.
-the frequencies need to be compared after they have been subtracted from the frequencies!
-also, when deleting a token, add the frequencies back to the tokens it used to replace.
-this could lead to an instability and an infinite loop. we need to see. i think not, since we removed the tokens that led to the token in the first place. 
+## Overview
+PrunedBPE is a Python library implemented in C++ using pybind11. It introduces an innovative approach to Byte Pair Encoding (BPE) by dynamically pruning intermediate tokens. This method ensures that each token consistently meets a specified frequency threshold throughout the BPE process.
 
-i have an idea for a better BPE. imagine during creation of the encoding, you discover a token A=BC that is used 99 times. then we find another token D = AE = BCE which is used 50 times. so the remaining usages of A would be 49. so if we delete A from our set of tokens, and add D to our set of tokens, the encoding length of our whole text would still shrink by 1, without increasing the number of tokens, because we replaced 50 BCEs with D, and added 49 BCs for where A was
+## Installation
+To install PrunedBPE, run the following command in the root directory of the repository:
+
+```
+pip3 install .
+```
+
+## Concept
+Traditional BPE has a limitation: once a token is created due to its initial high frequency, it is not reassessed for frequency as the encoding process continues. This can lead to suboptimal encodings. PrunedBPE addresses this issue by dynamically pruning tokens whose frequency falls below a certain threshold during the BPE process.
+
+### Advantages
+- **Efficient Encoding**: By pruning less frequent tokens, PrunedBPE allows for the allocation of tokens to more frequently occurring pairs, leading to a more efficient encoding.
+- **Frequency Guarantee**: Each token in the final encoding is guaranteed to appear at least a minimum number of times (`min_frequency`), facilitating better learning of token contexts in the dataset.
+
+### Implementation Details
+- **Frequency Adjustment**: When a token is pruned, its frequency count is redistributed to the tokens it replaced. This approach ensures the stability of the encoding process.
+- **Loop Prevention**: The algorithm avoids potential infinite loops by removing tokens that contribute to the creation of a new, pruned token.
+
+## Example
+Consider the following scenario in BPE:
+- Token A (`BC`) occurs 99 times.
+- A new token D (`AE` or `BCE`) is found to occur 50 times.
+
+In traditional BPE, A would remain in the set. However, in PrunedBPE, A is pruned and replaced by D. This results in:
+- 50 instances of `BCE` being replaced by D.
+- The remaining 49 instances of A (`BC`) are added back.
+
+This approach maintains the encoding length while ensuring a more efficient and contextually relevant set of tokens.
+
+---
+
+*Note: The above documentation focuses on the implementation and advantages of the PrunedBPE approach, aligning with the library's functionality.*
